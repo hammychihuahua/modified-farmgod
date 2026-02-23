@@ -1,4 +1,4 @@
-ScriptAPI.register('FarmGod_Mod_Fixed_Timezone', true, 'Warre', 'nl.tribalwars@coma.innogames.de');
+ScriptAPI.register('FarmGod_Smart_v2', true, 'Warre', 'nl.tribalwars@coma.innogames.de');
 window.FarmGod = {};
 window.FarmGod.Library = (function () {
   if (typeof window.twLib === 'undefined') {
@@ -71,20 +71,34 @@ window.FarmGod.Library = (function () {
   };
   const getDistance = function (origin, target) { let a = origin.toCoord(true).x - target.toCoord(true).x; let b = origin.toCoord(true).y - target.toCoord(true).y; return Math.hypot(a, b); };
   const subtractArrays = function (array1, array2) { let result = array1.map((val, i) => { return val - array2[i]; }); return result.some((v) => v < 0) ? false : result; };
-  const getCurrentServerTime = function () { 
-    let [hour, min, sec, day, month, year] = $('#serverTime').closest('p').text().match(/\d+/g); 
-    return new Date(year, month - 1, day, hour, min, sec).getTime(); 
+  
+  const getCurrentServerTime = function () {
+    let tStr = $('#serverTime').text();
+    let dStr = $('#serverDate').text();
+    if (!tStr || !dStr) return new Date().getTime();
+    let tParts = tStr.split(':');
+    let dParts = dStr.split('/');
+    return new Date(dParts[2], dParts[1] - 1, dParts[0], tParts[0], tParts[1], tParts[2]).getTime();
   };
+
   const timestampFromString = function (timestr) {
-    let now = new Date();
-    let d = [now.getDate(), now.getMonth() + 1, now.getFullYear()];
+    let serverNow = new Date(getCurrentServerTime());
     let tMatch = timestr.match(/(\d{1,2}):(\d{2})/);
-    if (!tMatch) return now.getTime();
-    let h = parseInt(tMatch[1]), m = parseInt(tMatch[2]), s = 0;
-    let date = new Date(d[2], d[1] - 1, d[0], h, m, s);
-    if (timestr.toLowerCase().includes('yesterday')) date.setDate(date.getDate() - 1);
-    return date.getTime();
+    if (!tMatch) return serverNow.getTime();
+    let rT = new Date(serverNow.getTime());
+    rT.setHours(parseInt(tMatch[1]), parseInt(tMatch[2]), 0, 0);
+    if (timestr.toLowerCase().includes('yesterday') || timestr.includes('เมื่อวาน')) {
+        rT.setDate(serverNow.getDate() - 1);
+    } else if (!timestr.toLowerCase().includes('today') && !timestr.includes('วันนี้')) {
+        let dMatch = timestr.match(/(\d{1,2})\.(\d{1,2})\./);
+        if (dMatch) {
+            rT.setDate(parseInt(dMatch[1], 10));
+            rT.setMonth(parseInt(dMatch[2], 10) - 1);
+        }
+    }
+    return rT.getTime();
   };
+  
   String.prototype.toCoord = function (objectified) { let c = (this.match(/\d{1,3}\|\d{1,3}/g) || [false]).pop(); return c && objectified ? { x: c.split('|')[0], y: c.split('|')[1] } : c; };
   String.prototype.toNumber = function () { return parseFloat(this); };
   Number.prototype.toNumber = function () { return parseFloat(this); };
@@ -207,28 +221,38 @@ window.FarmGod.Main = (function (Library, Translation) {
             let $el = $(el), name = $el.prev('tr').find('a.farm_icon').attr('class').match(/farm_icon_(.*)\s/)[1];
             data.farms.templates[name] = { id: $el.find('input[name*="[id]"]').val().toNumber(), units: $el.find('input[type="text"]').map((idx, e) => $(e).val().toNumber()).get(), speed: 10 };
           });
-          data.farms.templates['c'] = { id: 'c', units: [0,0,0,0,0,2,0,0,0,0,0,0], speed: 10 };
+          
+          let cUnits = new Array(game_data.units.length).fill(0);
+          let lcIdx = game_data.units.indexOf('light');
+          let spyIdx = game_data.units.indexOf('spy');
+          if (lcIdx > -1) cUnits[lcIdx] = 2;
+          if (spyIdx > -1) cUnits[spyIdx] = 1;
+          data.farms.templates['c'] = { id: 'c', units: cUnits, speed: s['light'] || 10 };
         }
+        
+        let serverNow = new Date(lib.getCurrentServerTime());
         $h.find('#plunder_list tr[id^="village_"]').map((i, el) => {
           let $el = $(el);
+          let coord = $el.find('a[href*="screen=info_village"]').first().text().toCoord() || $el.text().toCoord();
+          if (!coord) return;
+          
           let timeText = "";
           $el.find('td').each(function() {
               let text = $(this).text().toLowerCase();
-              if (text.includes(':') && (text.includes('today') || text.includes('yesterday') || text.match(/\d+\.\d+/))) {
+              if (text.includes(':') && (text.includes('today') || text.includes('yesterday') || text.includes('วันนี้') || text.includes('เมื่อวาน') || text.match(/\d+\.\d+/))) {
                   timeText = text;
               }
           });
           
           let dH = 999;
           if (timeText) {
-            let serverNow = new Date(lib.getCurrentServerTime());
             let rT = new Date(serverNow.getTime());
             let tM = timeText.match(/(\d{1,2}):(\d{2})/);
             if (tM) {
               rT.setHours(parseInt(tM[1], 10), parseInt(tM[2], 10), 0, 0);
-              if (timeText.includes('yesterday')) {
+              if (timeText.includes('yesterday') || timeText.includes('เมื่อวาน')) {
                   rT.setDate(serverNow.getDate() - 1);
-              } else if (!timeText.includes('today') && !timeText.includes('yesterday')) {
+              } else if (!timeText.includes('today') && !timeText.includes('วันนี้')) {
                   let dM = timeText.match(/(\d{1,2})\.(\d{1,2})\./);
                   if (dM) {
                       rT.setDate(parseInt(dM[1], 10));
@@ -236,17 +260,17 @@ window.FarmGod.Main = (function (Library, Translation) {
                   }
               }
               dH = (serverNow.getTime() - rT.getTime()) / 36e5;
+              if (dH < 0) dH += 24; 
             }
           }
-          let coord = $el.find('a[href*="screen=report"]').first().text().toCoord();
-          if(coord) {
-              data.farms.farms[coord] = { 
-                id: $el.attr('id').split('_')[1].toNumber(), 
-                color: $el.find('img[src*="dots/"]').attr('src').match(/dots\/(.*)\.png/)[1], 
-                has_c: $el.find('.farm_icon_c').length > 0, 
-                age_h: dH 
-              };
-          }
+
+          let colorMatch = $el.find('img[src*="dots/"]').attr('src');
+          data.farms.farms[coord] = { 
+            id: parseInt($el.attr('id').split('_')[1], 10), 
+            color: colorMatch ? colorMatch.match(/dots\/(.*)\.png/)[1] : 'blue', 
+            has_c: $el.find('[class*="farm_icon_c"]').length > 0, 
+            age_h: dH 
+          };
         });
       })
     ]).then(() => {
