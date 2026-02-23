@@ -1,4 +1,4 @@
-ScriptAPI.register('FarmGod_Mod', true, 'Warre', 'nl.tribalwars@coma.innogames.de');
+ScriptAPI.register('FarmGod_Mod_Fixed', true, 'Warre', 'nl.tribalwars@coma.innogames.de');
 window.FarmGod = {};
 window.FarmGod.Library = (function () {
   if (typeof window.twLib === 'undefined') {
@@ -73,14 +73,13 @@ window.FarmGod.Library = (function () {
   const subtractArrays = function (array1, array2) { let result = array1.map((val, i) => { return val - array2[i]; }); return result.some((v) => v < 0) ? false : result; };
   const getCurrentServerTime = function () { let [hour, min, sec, day, month, year] = $('#serverTime').closest('p').text().match(/\d+/g); return new Date(year, month - 1, day, hour, min, sec).getTime(); };
   const timestampFromString = function (timestr) {
-    let d = $('#serverDate').text().split('/').map((x) => +x);
-    let todayPattern = new RegExp(window.lang['aea2b0aa9ae1534226518faaefffdaad'].replace('%s', '([\\d+|:]+)')).exec(timestr);
-    let tomorrowPattern = new RegExp(window.lang['57d28d1b211fddbb7a499ead5bf23079'].replace('%s', '([\\d+|:]+)')).exec(timestr);
-    let laterDatePattern = new RegExp(window.lang['0cb274c906d622fa8ce524bcfbb7552d'].replace('%1', '([\\d+|\\.]+)').replace('%2', '([\\d+|:]+)')).exec(timestr);
-    let t, date;
-    if (todayPattern !== null) { t = todayPattern[1].split(':'); date = new Date(d[2], d[1] - 1, d[0], t[0], t[1], t[2], t[3] || 0); } 
-    else if (tomorrowPattern !== null) { t = tomorrowPattern[1].split(':'); date = new Date(d[2], d[1] - 1, d[0] + 1, t[0], t[1], t[2], t[3] || 0); } 
-    else { d = (laterDatePattern[1] + d[2]).split('.').map((x) => +x); t = laterDatePattern[2].split(':'); date = new Date(d[2], d[1] - 1, d[0], t[0], t[1], t[2], t[3] || 0); }
+    let now = new Date();
+    let d = [now.getDate(), now.getMonth() + 1, now.getFullYear()];
+    let tMatch = timestr.match(/(\d{1,2}):(\d{2}):(\d{2})/);
+    if (!tMatch) return now.getTime();
+    let h = parseInt(tMatch[1]), m = parseInt(tMatch[2]), s = parseInt(tMatch[3]);
+    let date = new Date(d[2], d[1] - 1, d[0], h, m, s);
+    if (timestr.toLowerCase().includes('yesterday')) date.setDate(date.getDate() - 1);
     return date.getTime();
   };
   String.prototype.toCoord = function (objectified) { let c = (this.match(/\d{1,3}\|\d{1,3}/g) || [false]).pop(); return c && objectified ? { x: c.split('|')[0], y: c.split('|')[1] } : c; };
@@ -95,18 +94,18 @@ window.FarmGod.Translation = (function () {
       missingFeatures: 'Script requires a premium account and loot assistent!',
       options: {
         title: 'FarmGod (Smart 1Hr Mod)',
-        warning: '<b>Warning:</b><br>- Make sure A is set as your default microfarm and C is ready<br>- Filters must be set correctly',
-        filterImage: 'https://higamy.github.io/TW/Scripts/Assets/farmGodFilters.png',
-        group: 'Send farms from group:',
-        distance: 'Maximum fields for farms:',
-        time: 'Time in minutes between farms:',
-        losses: 'Send farm to villages with partial losses:',
-        maxloot: 'Send template C if report < 1 hour (else A):',
+        warning: '<b>คำแนะนำ:</b><br>- ติ๊กถูกช่องล่างสุดเพื่อส่งปุ่ม C ถ้ารายงานอายุต่ำกว่า 1.5 ชม.',
+        filterImage: '',
+        group: 'ส่งจากกลุ่มหมู่บ้าน:',
+        distance: 'ระยะทางสูงสุด (ช่อง):',
+        time: 'เวลาขั้นต่ำระหว่างการโจมตี (นาที):',
+        losses: 'ส่งฟาร์มไปเมืองที่เคยตายบางส่วน (เหลือง):',
+        maxloot: 'ส่งปุ่ม C ถ้ารายงานอายุ < 1.5 ชั่วโมง (ถ้าไม่ใช่ส่ง A):',
         newbarbs: 'Add new barbs te farm:',
-        button: 'Plan farms',
+        button: 'คำนวณและเตรียมส่ง',
       },
-      table: { noFarmsPlanned: 'No farms can be sent.', origin: 'Origin', target: 'Target', fields: 'fields', farm: 'Farm', goTo: 'Go to' },
-      messages: { villageChanged: 'Successfully changed village!', villageError: 'All farms for the current village have been sent!', sendError: 'Error: farm not send!' },
+      table: { noFarmsPlanned: 'ไม่มีเป้าหมายให้ส่ง', origin: 'จากเมือง', target: 'เป้าหมาย', fields: 'ระยะทาง', farm: 'ส่งฟาร์ม', goTo: 'Go to' },
+      messages: { villageChanged: 'เปลี่ยนหมู่บ้านสำเร็จ!', villageError: 'เมืองนี้ส่งครบหมดแล้ว!', sendError: 'Error: ส่งไม่ได้!' },
     }
   };
   const get = function () { return msg['int']; };
@@ -144,10 +143,9 @@ window.FarmGod.Main = (function (Library, Translation) {
       if (game_data.market != 'nl' || $(this).data('origin') == curVillage) { sendFarm($(this)); } else { UI.ErrorMessage(t.messages.villageError); }
     });
     $(document).off('keydown').on('keydown', (event) => { if ((event.keyCode || event.which) == 13) { $('.farmGod_icon').first().trigger('click'); } });
-    $('.switchVillage').off('click').on('click', function () { curVillage = $(this).data('id'); UI.SuccessMessage(t.messages.villageChanged); $(this).closest('tr').remove(); });
   };
   const buildOptions = function () {
-    let options = JSON.parse(localStorage.getItem('farmGod_options')) || { optionGroup: 0, optionDistance: 25, optionTime: 10, optionLosses: false, optionMaxloot: true, optionNewbarbs: true };
+    let options = JSON.parse(localStorage.getItem('farmGod_options')) || { optionGroup: 0, optionDistance: 15, optionTime: 10, optionLosses: false, optionMaxloot: true, optionNewbarbs: false };
     return $.when(buildGroupSelect(options.optionGroup)).then((groupSelect) => {
       return `<style>#popup_box_FarmGod{text-align:center;width:550px;}</style>
               <h3>${t.options.title}</h3><br><div class="optionsContent">
@@ -157,7 +155,7 @@ window.FarmGod.Main = (function (Library, Translation) {
                 <tr><td>${t.options.distance}</td><td><input type="text" size="5" class="optionDistance" value="${options.optionDistance}"></td></tr>
                 <tr><td>${t.options.time}</td><td><input type="text" size="5" class="optionTime" value="${options.optionTime}"></td></tr>
                 <tr><td>${t.options.losses}</td><td><input type="checkbox" class="optionLosses" ${options.optionLosses ? 'checked' : ''}></td></tr>
-                <tr><td><b>${t.options.maxloot}</b></td><td><input type="checkbox" class="optionMaxloot" ${options.optionMaxloot ? 'checked' : ''}></td></tr>
+                <tr><td style="color:red; font-weight:bold;">${t.options.maxloot}</td><td><input type="checkbox" class="optionMaxloot" ${options.optionMaxloot ? 'checked' : ''}></td></tr>
               </table></div><br><input type="button" class="btn optionButton" value="${t.options.button}"></div>`;
     });
   };
@@ -169,15 +167,15 @@ window.FarmGod.Main = (function (Library, Translation) {
     });
   };
   const buildTable = function (plan) {
-    let html = `<div class="vis farmGodContent"><h4>FarmGod</h4><table class="vis" width="100%">
+    let html = `<div class="vis farmGodContent"><h4>FarmGod V2</h4><table class="vis" width="100%">
                 <tr><div id="FarmGodProgessbar" class="progress-bar live-progress-bar progress-bar-alive" style="width:98%;margin:5px auto;"><div style="background: rgb(146, 194, 0);"></div><span class="label" style="margin-top:0px;"></span></div></tr>
                 <tr><th style="text-align:center;">${t.table.origin}</th><th style="text-align:center;">${t.table.target}</th><th style="text-align:center;">${t.table.fields}</th><th style="text-align:center;">${t.table.farm}</th></tr>`;
     if (!$.isEmptyObject(plan)) {
       for (let prop in plan) {
         plan[prop].forEach((val, i) => {
           html += `<tr class="farmRow row_${i % 2 == 0 ? 'a' : 'b'}">
-                    <td style="text-align:center;"><a href="${game_data.link_base_pure}info_village&id=${val.origin.id}">${val.origin.name} (${val.origin.coord})</a></td>
-                    <td style="text-align:center;"><a href="${game_data.link_base_pure}info_village&id=${val.target.id}">${val.target.coord}</a></td>
+                    <td style="text-align:center;">${val.origin.name}</td>
+                    <td style="text-align:center;">${val.target.coord}</td>
                     <td style="text-align:center;">${val.fields.toFixed(2)}</td>
                     <td style="text-align:center;"><a href="#" data-origin="${val.origin.id}" data-target="${val.target.id}" data-template="${val.template.id}" class="farmGod_icon farm_icon farm_icon_${val.template.name}" style="margin:auto;"></a></td>
                   </tr>`;
@@ -204,7 +202,6 @@ window.FarmGod.Main = (function (Library, Translation) {
     };
     let farmProcessor = ($html) => {
       if ($.isEmptyObject(data.farms.templates)) {
-        data.farms.templates['c'] = { id: 'c', units: [0,0,0,0,0,0,0,0,0,0,0,0], speed: 10 };
         let unitSpeeds = lib.getUnitSpeeds();
         $html.find('form[action*="action=edit_all"]').find('input[type="hidden"][name*="template"]').closest('tr').map((i, el) => {
           let $el = $(el);
@@ -214,29 +211,35 @@ window.FarmGod.Main = (function (Library, Translation) {
             speed: Math.max(...$el.find('input[type="text"], input[type="number"]').map((index, element) => { return $(element).val().toNumber() > 0 ? unitSpeeds[$(element).attr('name').trim().split('[')[0]] : 0; }).get())
           });
         });
+        // Create virtual C Template
+        let spyIdx = game_data.units.indexOf('spy');
+        let lcIdx = game_data.units.indexOf('light');
+        let cUnits = new Array(game_data.units.length).fill(0);
+        if (lcIdx > -1) cUnits[lcIdx] = 2; // หลอกว่าใช้ม้า 2 เพื่อให้ผ่านเงื่อนไขทหารเหลือ
+        if (spyIdx > -1) cUnits[spyIdx] = 1;
+        data.farms.templates['c'] = { id: 'c', units: cUnits, speed: unitSpeeds['light'] || 10 };
       }
-    data.farms.templates['c'] = { id: 'c', units: [0,0,0,0,0,0,0,0,0,0,0,0], speed: 10 };
-    $html.find('#plunder_list').find('tr[id^="village_"]').map((i, el) => {
-        let $el = $(el);
-        let tds = $el.find('td'); let timeText = "";
+      $html.find('#plunder_list').find('tr[id^="village_"]').map((i, el) => {
+        let $el = $(el); let tds = $el.find('td'); let timeText = "";
         for (let j = 0; j < tds.length; j++) {
             let text = $(tds[j]).text().toLowerCase();
             if (text.includes(':') && (text.includes('วัน') || text.includes('today') || text.includes('yesterday') || text.match(/\d+\.\d+/))) { timeText = text; break; }
         }
         let diffHours = 999;
-     let now = new Date(); let reportTime = new Date(now.getTime()); let timeMatch = timeText.match(/(\d{1,2}):(\d{2})/);
-if (timeMatch) {
-let hours = parseInt(timeMatch[1], 10); let minutes = parseInt(timeMatch[2], 10);
-if (timeText.includes('yesterday')) { reportTime.setDate(now.getDate() - 1); }
-reportTime.setHours(hours, minutes, 0, 0);
-diffHours = (now.getTime() - reportTime.getTime()) / (1000 * 60 * 60);
-}
-      
+        if (timeText) {
+            let now = new Date(); let reportTime = new Date(now.getTime()); let timeMatch = timeText.match(/(\d{1,2}):(\d{2})/);
+            if (timeMatch) {
+                let hours = parseInt(timeMatch[1], 10); let minutes = parseInt(timeMatch[2], 10);
+                if (timeText.includes('yesterday')) { reportTime.setDate(now.getDate() - 1); } 
+                reportTime.setHours(hours, minutes, 0, 0);
+                diffHours = (now.getTime() - reportTime.getTime()) / (1000 * 60 * 60);
+            }
         }
         return (data.farms.farms[$el.find('a[href*="screen=report&mode=all&view="]').first().text().toCoord()] = {
           id: $el.attr('id').split('_')[1].toNumber(),
           color: $el.find('img[src*="graphic/dots/"]').attr('src').match(/dots\/(green|yellow|red|blue|red_blue)/)[1],
-          age_hours: diffHours, has_c: $el.find('a.farm_icon_c').length > 0, age_h: diffHours
+          age_hours: diffHours,
+          has_c: $el.find('a.farm_icon_c').length > 0
         });
       });
       return data;
@@ -258,9 +261,9 @@ diffHours = (now.getTime() - reportTime.getTime()) / (1000 * 60 * 60);
       orderedFarms.forEach((el) => {
         let farmIndex = data.farms.farms[el.coord];
         let template_name = 'a';
-      
-if (optionMaxloot && farmIndex.has_c && farmIndex.age_h <= 1.0) { template_name = 'c'; }
-        
+        if (optionMaxloot && farmIndex.has_c && farmIndex.age_hours <= 1.5) {
+            template_name = 'c';
+        }
         if (!data.farms.templates.hasOwnProperty(template_name)) { template_name = 'a'; }
         let template = data.farms.templates[template_name];
         let unitsLeft = lib.subtractArrays(data.villages[prop].units, template.units);
@@ -293,5 +296,4 @@ if (optionMaxloot && farmIndex.has_c && farmIndex.age_h <= 1.0) { template_name 
   };
   return { init };
 })(window.FarmGod.Library, window.FarmGod.Translation);
-
 (() => { window.FarmGod.Main.init(); })();
