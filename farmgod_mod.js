@@ -1,4 +1,4 @@
-ScriptAPI.register('FarmGod_Ultimate_v5', true, 'Warre', 'nl.tribalwars@coma.innogames.de');
+ScriptAPI.register('FarmGod_Unstoppable_v6', true, 'Warre', 'nl.tribalwars@coma.innogames.de');
 window.FarmGod = {};
 window.FarmGod.Library = (function () {
   if (typeof window.twLib === 'undefined') {
@@ -94,7 +94,13 @@ window.FarmGod.Library = (function () {
     return processPage(url, page, wrapFn);
   };
   const getDistance = function (origin, target) { let a = origin.toCoord(true).x - target.toCoord(true).x; let b = origin.toCoord(true).y - target.toCoord(true).y; return Math.hypot(a, b); };
-  const subtractArrays = function (array1, array2) { let result = array1.map((val, i) => { return val - array2[i]; }); return result.some((v) => v < 0) ? false : result; };
+  
+  // เกราะป้องกัน: ลบเลข Array ให้ปลอดภัยแม้ขนาดไม่เท่ากัน
+  const subtractArrays = function (array1, array2) { 
+      if (!array1 || !array2) return false;
+      let result = array1.map((val, i) => { return val - (array2[i] || 0); }); 
+      return result.some((v) => v < 0) ? false : result; 
+  };
   
   const getCurrentServerTime = function () {
     try {
@@ -149,7 +155,7 @@ window.FarmGod.Translation = (function () {
     int: {
       missingFeatures: 'Script requires a premium account!',
       options: {
-        title: 'FarmGod Ultimate v5',
+        title: 'FarmGod Unstoppable v6',
         warning: '<b>คำแนะนำ:</b> ติ๊กช่องสุดท้ายเพื่อส่งปุ่ม C ถ้ารายงานอายุ < 1.5 ชม.',
         filterImage: '',
         group: 'ส่งจากกลุ่ม:',
@@ -190,7 +196,7 @@ window.FarmGod.Main = (function (Library, Translation) {
             }).catch(err => {
               Dialog.close(); 
               prompt("พบข้อผิดพลาด โปรดคัดลอกข้อความนี้:", err ? (err.stack || err.message || err) : "Unknown Error");
-              UI.ErrorMessage("สคริปต์โหลดข้อมูลล้มเหลว");
+              UI.ErrorMessage("สคริปต์โหลดข้อมูลล้มเหลว (เช็ค F12)");
             });
           });
         });
@@ -224,7 +230,7 @@ window.FarmGod.Main = (function (Library, Translation) {
     });
   };
   const buildTable = function (plan) {
-    let html = `<div class="vis farmGodContent"><h4>FarmGod Ultimate v5</h4><table class="vis" width="100%">
+    let html = `<div class="vis farmGodContent"><h4>FarmGod Unstoppable v6</h4><table class="vis" width="100%">
                 <tr><div id="FarmGodProgessbar" class="progress-bar" style="width:98%;margin:5px auto;"><div style="background: rgb(146, 194, 0);"></div><span class="label"></span></div></tr>
                 <tr><th>${t.table.origin}</th><th>${t.table.target}</th><th>${t.table.fields}</th><th>${t.table.farm}</th></tr>`;
     if (!$.isEmptyObject(plan)) {
@@ -279,27 +285,34 @@ window.FarmGod.Main = (function (Library, Translation) {
             if ($.isEmptyObject(data.farms.templates)) {
               let s = lib.getUnitSpeeds() || {};
               let defSpeed = s['light'] || 10;
-              $h.find('form[action*="action=edit_all"] a.farm_icon').each(function() {
-                try {
-                    let cls = $(this).attr('class') || "";
-                    let nameMatch = cls.match(/farm_icon_([a-b])/);
-                    if (nameMatch && nameMatch[1]) {
-                        let name = nameMatch[1];
-                        let $row = $(this).closest('tr');
-                        let idInput = $row.find('input[name*="[id]"]');
-                        if (idInput.length) {
-                            data.farms.templates[name] = { 
-                                id: parseInt(idInput.val(), 10), 
-                                units: $row.find('input[type="text"]').map((idx, e) => parseInt($(e).val(), 10) || 0).get(), 
-                                speed: defSpeed 
-                            };
-                        }
-                    }
-                } catch(e) {}
+              
+              // ดึงค่า Template แบบดั้งเดิมที่เสถียรที่สุด
+              $h.find('form[action*="action=edit_all"] input[name*="[id]"]').closest('tr').each(function() {
+                  try {
+                      let $el = $(this);
+                      let iconClass = $el.prev('tr').find('a.farm_icon').attr('class') || "";
+                      let nameMatch = iconClass.match(/farm_icon_([a-b])/);
+                      if (nameMatch && nameMatch[1]) {
+                          let name = nameMatch[1];
+                          data.farms.templates[name] = { 
+                              id: parseInt($el.find('input[name*="[id]"]').val(), 10) || 0, 
+                              units: $el.find('input[type="text"], input[type="number"]').map((idx, e) => parseInt($(e).val(), 10) || 0).get(), 
+                              speed: defSpeed 
+                          };
+                      }
+                  } catch(e) {}
               });
-              let cUnits = new Array(game_data.units.length).fill(0);
-              let lcIdx = game_data.units.indexOf('light');
-              if (lcIdx > -1) cUnits[lcIdx] = 2;
+
+              // เกราะป้องกัน: ถ้าหา Template A ไม่เจอ สร้างค่าจำลองทันทีเพื่อไม่ให้ระบบพัง (แก้อาการ Cannot read units)
+              if (!data.farms.templates['a']) {
+                  data.farms.templates['a'] = { id: 0, units: new Array(12).fill(0), speed: defSpeed };
+              }
+
+              let cUnitsLength = data.farms.templates['a'].units.length || 12;
+              let cUnits = new Array(cUnitsLength).fill(0);
+              let lcIdx = (typeof game_data !== 'undefined' && game_data.units) ? game_data.units.indexOf('light') : 5;
+              if (lcIdx > -1 && lcIdx < cUnitsLength) cUnits[lcIdx] = 2;
+              
               data.farms.templates['c'] = { id: 'c', units: cUnits, speed: defSpeed };
             }
             
@@ -371,17 +384,24 @@ window.FarmGod.Main = (function (Library, Translation) {
   const createPlanning = function (dis, time, maxL, data) {
     let plan = { counter: 0, farms: {} }, now = Math.round(lib.getCurrentServerTime() / 1000);
     for (let s in data.villages) {
+      if (!data.villages[s] || !data.villages[s].units) continue; // เกราะป้องกันชั้นที่ 1
+
       Object.keys(data.farms.farms).map(k => ({ k, d: lib.getDistance(s, k) })).sort((a, b) => a.d - b.d).forEach(f => {
         let v = data.farms.farms[f.k];
-        let tN = 'a';
+        if (!v) return; // เกราะป้องกันชั้นที่ 2
         
+        let tN = 'a';
         if (maxL && v.has_c && v.age_h <= 1.5) { tN = 'c'; }
-        if (!data.farms.templates.hasOwnProperty(tN)) { tN = 'a'; }
+        
+        if (!data.farms.templates || !data.farms.templates[tN]) { tN = 'a'; }
         
         let temp = data.farms.templates[tN];
-        let tempId = (tN === 'c') ? 'c' : temp.id;
+        if (!temp || !temp.units) return; // เกราะป้องกันชั้นสุดท้าย (ไม่มีทางเกิด Cannot read 'units' อีก)
         
+        let tempId = (tN === 'c') ? 'c' : temp.id;
         let units = lib.subtractArrays(data.villages[s].units, temp.units);
+        if (!units) return; 
+
         let arrival = Math.round(now + f.d * temp.speed * 60 + Math.round(plan.counter / 5));
         let maxTimeDiff = Math.round(time * 60); 
         let timeDiff = true;
@@ -390,7 +410,7 @@ window.FarmGod.Main = (function (Library, Translation) {
           data.commands[f.k].forEach(ts => { if (Math.abs(ts - arrival) < maxTimeDiff) timeDiff = false; });
         } else { data.commands[f.k] = []; }
 
-        if (units && timeDiff && f.d < dis) {
+        if (timeDiff && f.d < dis) {
           plan.counter++; if (!plan.farms[s]) plan.farms[s] = [];
           plan.farms[s].push({ origin: { id: data.villages[s].id, name: data.villages[s].name }, target: { coord: f.k, id: v.id }, fields: f.d, template: { name: tN, id: tempId } });
           data.villages[s].units = units;
