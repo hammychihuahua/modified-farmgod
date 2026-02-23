@@ -214,6 +214,14 @@ window.FarmGod.Main = (function (Library, Translation) {
           });
         });
       }
+      let lcIndex = game_data.units.indexOf('light');
+let cUnits = new Array(game_data.units.length).fill(0);
+if (lcIndex > -1) cUnits[lcIndex] = 2;
+data.farms.templates['c'] = {
+id: 'c',
+units: cUnits,
+speed: 10
+};
       $html.find('#plunder_list').find('tr[id^="village_"]').map((i, el) => {
         let $el = $(el);
         let tds = $el.find('td'); let timeText = "";
