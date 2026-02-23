@@ -91,15 +91,12 @@ window.FarmGod.Library = (function () {
             tMatch = timestr.match(/(\d{1,2}):(\d{2})/);
             if (!tMatch) return serverNow.getTime();
         }
-        
         let rT = new Date(serverNow.getTime());
         rT.setHours(parseInt(tMatch[1], 10), parseInt(tMatch[2], 10), tMatch[3] ? parseInt(tMatch[3], 10) : 0, 0);
 
         let tLower = timestr.toLowerCase();
         if (tLower.includes('yesterday') || tLower.includes('เมื่อวาน')) {
             rT.setDate(serverNow.getDate() - 1);
-        } else if (tLower.includes('tomorrow') || tLower.includes('พรุ่งนี้')) {
-            rT.setDate(serverNow.getDate() + 1);
         } else if (!tLower.includes('today') && !tLower.includes('วันนี้')) {
             let dM = timestr.match(/(\d{1,2})\.(\d{1,2})\./);
             if (dM) {
@@ -108,9 +105,7 @@ window.FarmGod.Library = (function () {
             }
         }
         return rT.getTime();
-    } catch(e) {
-        return new Date().getTime();
-    }
+    } catch(e) { return new Date().getTime(); }
   };
 
   String.prototype.toCoord = function (objectified) { let c = (this.match(/\d{1,3}\|\d{1,3}/g) || [false]).pop(); return c && objectified ? { x: c.split('|')[0], y: c.split('|')[1] } : c; };
@@ -139,8 +134,7 @@ window.FarmGod.Translation = (function () {
       messages: { villageChanged: 'เปลี่ยนหมู่บ้านสำเร็จ!', villageError: 'เมืองนี้ส่งครบแล้ว!', sendError: 'Error!' },
     }
   };
-  const get = function () { return msg['int']; };
-  return { get };
+  return { get: function () { return msg['int']; } };
 })();
 
 window.FarmGod.Main = (function (Library, Translation) {
@@ -164,9 +158,7 @@ window.FarmGod.Main = (function (Library, Translation) {
               UI.updateProgressBar($('#FarmGodProgessbar'), 0, plan.counter);
               $('#FarmGodProgessbar').data('current', 0).data('max', plan.counter);
             }).catch(err => {
-              console.error(err);
-              Dialog.close();
-              UI.ErrorMessage("สคริปต์ทำงานขัดข้อง กรุณากด F12 ดู Console");
+              Dialog.close(); UI.ErrorMessage("Error: ไม่สามารถโหลดข้อมูลได้");
             });
           });
         });
@@ -174,10 +166,7 @@ window.FarmGod.Main = (function (Library, Translation) {
     } else { UI.ErrorMessage(t.missingFeatures); }
   };
   const bindEventHandlers = function () {
-    $('.farmGod_icon').off('click').on('click', function (e) { 
-        e.preventDefault(); 
-        sendFarm($(this)); 
-    });
+    $('.farmGod_icon').off('click').on('click', function (e) { e.preventDefault(); sendFarm($(this)); });
     $(document).off('keydown').on('keydown', (e) => { if (13 == (e.keyCode || e.which)) { e.preventDefault(); $('.farmGod_icon').first().trigger('click'); } });
   };
   const buildOptions = function () {
@@ -239,18 +228,22 @@ window.FarmGod.Main = (function (Library, Translation) {
       lib.processAllPages(TribalWars.buildURL('GET', 'am_farm'), ($h) => {
         if ($.isEmptyObject(data.farms.templates)) {
           let s = lib.getUnitSpeeds();
-          $h.find('form[action*="action=edit_all"] input[name*="[id]"]').closest('tr').each(function() {
-            let $el = $(this);
-            let iconClass = $el.prev('tr').find('a.farm_icon').attr('class') || "";
-            let match = iconClass.match(/farm_icon_([a-c])/);
-            let name = match ? match[1] : 'a';
-            data.farms.templates[name] = { 
-                id: $el.find('input[name*="[id]"]').val().toNumber(), 
-                units: $el.find('input[type="text"]').map((idx, e) => $(e).val().toNumber()).get(), 
-                speed: 10 
-            };
+          $h.find('form[action*="action=edit_all"] a.farm_icon').each(function() {
+            let $icon = $(this);
+            let nameMatch = $icon.attr('class').match(/farm_icon_([a-b])/);
+            if (nameMatch) {
+              let name = nameMatch[1];
+              let $row = $icon.closest('tr');
+              let idInput = $row.find('input[name*="[id]"]');
+              if (idInput.length) {
+                data.farms.templates[name] = { 
+                  id: parseInt(idInput.val(), 10), 
+                  units: $row.find('input[type="text"]').map((idx, e) => parseInt($(e).val(), 10) || 0).get(), 
+                  speed: 10 
+                };
+              }
+            }
           });
-          
           let cUnits = new Array(game_data.units.length).fill(0);
           let lcIdx = game_data.units.indexOf('light');
           if (lcIdx > -1) cUnits[lcIdx] = 2;
@@ -314,11 +307,9 @@ window.FarmGod.Main = (function (Library, Translation) {
         let v = data.farms.farms[f.k];
         let tN = 'a';
         
-        if (maxL && v.has_c && v.age_h <= 1.5) {
-            tN = 'c';
-        }
-        
+        if (maxL && v.has_c && v.age_h <= 1.5) { tN = 'c'; }
         if (!data.farms.templates.hasOwnProperty(tN)) { tN = 'a'; }
+        
         let temp = data.farms.templates[tN];
         let tempId = (tN === 'c') ? 'c' : temp.id;
         
@@ -343,29 +334,21 @@ window.FarmGod.Main = (function (Library, Translation) {
   };
   const sendFarm = function ($t) {
     if (farmBusy) return; farmBusy = true;
-    let targetId = $t.attr('data-target');
+    let targetId = parseInt($t.attr('data-target'), 10);
     let templateId = $t.attr('data-template');
-    let sourceId = $t.attr('data-origin');
-
-    TribalWars.post(Accountmanager.send_units_link.replace(/village=(\d+)/, 'village=' + sourceId), null, { 
-        target: targetId, 
-        template_id: templateId, 
-        source: sourceId 
-    }, (r) => {
-        UI.SuccessMessage(r.success || "Sent"); 
-        let $p = $('#FarmGodProgessbar'); 
-        $p.data('current', $p.data('current') + 1); 
-        UI.updateProgressBar($p, $p.data('current'), $p.data('max')); 
-        $t.closest('tr').remove(); 
+    
+    // บังคับใช้ฟังก์ชันดั้งเดิมของเกมเพื่อแก้ Error "Template has not been created yet"
+    if (typeof Accountmanager !== 'undefined' && Accountmanager.farm && Accountmanager.farm.sendUnits) {
+        Accountmanager.farm.sendUnits($t[0], targetId, templateId);
+        setTimeout(() => {
+            let $p = $('#FarmGodProgessbar'); 
+            $p.data('current', $p.data('current') + 1); 
+            UI.updateProgressBar($p, $p.data('current'), $p.data('max')); 
+            farmBusy = false;
+        }, 300);
+    } else {
         farmBusy = false;
-    }, (r) => { 
-        UI.ErrorMessage(r || t.messages.sendError); 
-        let $p = $('#FarmGodProgessbar'); 
-        $p.data('current', $p.data('current') + 1); 
-        UI.updateProgressBar($p, $p.data('current'), $p.data('max')); 
-        $t.closest('tr').remove(); 
-        farmBusy = false; 
-    });
+    }
   };
   return { init };
 })(window.FarmGod.Library, window.FarmGod.Translation);
