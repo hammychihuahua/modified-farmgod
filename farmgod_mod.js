@@ -1,4 +1,4 @@
-ScriptAPI.register('FarmGod_Smart_v2_Safe', true, 'Warre', 'nl.tribalwars@coma.innogames.de');
+ScriptAPI.register('FarmGod_Ultimate_v5', true, 'Warre', 'nl.tribalwars@coma.innogames.de');
 window.FarmGod = {};
 window.FarmGod.Library = (function () {
   if (typeof window.twLib === 'undefined') {
@@ -54,13 +54,36 @@ window.FarmGod.Library = (function () {
   if (!getUnitSpeeds()) setUnitSpeeds();
   
   const determineNextPage = function (page, $html) {
-    let villageLength = $html.find('#scavenge_mass_screen').length > 0 ? $html.find('tr[id*="scavenge_village"]').length : $html.find('tr.row_a, tr.row_ax, tr.row_b, tr.row_bx').length;
-    let navSelect = $html.find('.paged-nav-item').first().closest('td').find('select').first();
-    let navLength = $html.find('#am_widget_Farm').length > 0 ? parseInt($('#plunder_list_nav').first().find('a.paged-nav-item, strong.paged-nav-item')[$('#plunder_list_nav').first().find('a.paged-nav-item, strong.paged-nav-item').length - 1].textContent.replace(/\D/g, '')) - 1 : navSelect.length > 0 ? navSelect.find('option').length - 1 : $html.find('.paged-nav-item').not('[href*="page=-1"]').length;
-    let pageSize = $('#mobileHeader').length > 0 ? 10 : parseInt($html.find('input[name="page_size"]').val());
-    if (page == -1 && villageLength == 1000) { return Math.floor(1000 / pageSize); } else if (page < navLength) { return page + 1; }
-    return false;
+    try {
+      let isAmFarm = $html.find('#am_widget_Farm').length > 0;
+      let isScavenge = $html.find('#scavenge_mass_screen').length > 0;
+      let pSizeStr = $html.find('input[name="page_size"]').val();
+      let pageSize = pSizeStr ? parseInt(pSizeStr) : 10;
+      
+      if (page === -1) {
+          let villageLength = isScavenge ? $html.find('tr[id*="scavenge_village"]').length : $html.find('tr.row_a, tr.row_ax, tr.row_b, tr.row_bx').length;
+          if (villageLength >= 1000) return Math.floor(1000 / pageSize);
+          let navSelect = $html.find('.paged-nav-item').first().closest('td').find('select').first();
+          if (navSelect.length > 0) return navSelect.find('option').length - 1;
+          let pItems = $html.find('.paged-nav-item').not('[href*="page=-1"]');
+          if (pItems.length > 0) return pItems.length;
+          return false;
+      } else {
+          if (isAmFarm) {
+              let pItems = $html.find('#plunder_list_nav').first().find('a.paged-nav-item, strong.paged-nav-item');
+              if (pItems.length > 0) {
+                  let lastStr = pItems.last().text().replace(/\D/g, '');
+                  if (lastStr) {
+                      let navLength = parseInt(lastStr) - 1;
+                      if (page < navLength) return page + 1;
+                  }
+              }
+          }
+          return false;
+      }
+    } catch(e) { return false; }
   };
+  
   const processPage = function (url, page, wrapFn) {
     let pageText = url.match('am_farm') ? `&Farm_page=${page}` : `&page=${page}`;
     return twLib.ajax({ url: url + pageText }).then((html) => { return wrapFn(page, $(html)); });
@@ -86,12 +109,12 @@ window.FarmGod.Library = (function () {
 
   const timestampFromString = function (timestr) {
     try {
+        if (!timestr) return new Date().getTime();
         let serverNow = new Date(getCurrentServerTime());
         let tMatch = timestr.match(/(\d{1,2}):(\d{2}):(\d{2})/);
-        if (!tMatch) {
-            tMatch = timestr.match(/(\d{1,2}):(\d{2})/);
-            if (!tMatch) return serverNow.getTime();
-        }
+        if (!tMatch) tMatch = timestr.match(/(\d{1,2}):(\d{2})/);
+        if (!tMatch || !tMatch[1] || !tMatch[2]) return serverNow.getTime();
+        
         let rT = new Date(serverNow.getTime());
         rT.setHours(parseInt(tMatch[1], 10), parseInt(tMatch[2], 10), tMatch[3] ? parseInt(tMatch[3], 10) : 0, 0);
 
@@ -102,7 +125,7 @@ window.FarmGod.Library = (function () {
             rT.setDate(serverNow.getDate() + 1);
         } else if (!tLower.includes('today') && !tLower.includes('วันนี้')) {
             let dM = timestr.match(/(\d{1,2})\.(\d{1,2})\./);
-            if (dM) {
+            if (dM && dM[1] && dM[2]) {
                 rT.setDate(parseInt(dM[1], 10));
                 rT.setMonth(parseInt(dM[2], 10) - 1);
             }
@@ -111,7 +134,11 @@ window.FarmGod.Library = (function () {
     } catch(e) { return new Date().getTime(); }
   };
 
-  String.prototype.toCoord = function (objectified) { let c = (this.match(/\d{1,3}\|\d{1,3}/g) || [false]).pop(); return c && objectified ? { x: c.split('|')[0], y: c.split('|')[1] } : c; };
+  String.prototype.toCoord = function (objectified) { 
+      let matchRes = this.match(/\d{1,3}\|\d{1,3}/g);
+      let c = matchRes ? matchRes.pop() : false; 
+      return c && objectified ? { x: c.split('|')[0], y: c.split('|')[1] } : c; 
+  };
   String.prototype.toNumber = function () { return parseFloat(this); };
   Number.prototype.toNumber = function () { return parseFloat(this); };
   return { getUnitSpeeds, processPage, processAllPages, getDistance, subtractArrays, getCurrentServerTime, timestampFromString };
@@ -120,9 +147,9 @@ window.FarmGod.Library = (function () {
 window.FarmGod.Translation = (function () {
   const msg = {
     int: {
-      missingFeatures: 'Script requires a premium account and loot assistent!',
+      missingFeatures: 'Script requires a premium account!',
       options: {
-        title: 'FarmGod Smart v2 Safe',
+        title: 'FarmGod Ultimate v5',
         warning: '<b>คำแนะนำ:</b> ติ๊กช่องสุดท้ายเพื่อส่งปุ่ม C ถ้ารายงานอายุ < 1.5 ชม.',
         filterImage: '',
         group: 'ส่งจากกลุ่ม:',
@@ -161,9 +188,9 @@ window.FarmGod.Main = (function (Library, Translation) {
               UI.updateProgressBar($('#FarmGodProgessbar'), 0, plan.counter);
               $('#FarmGodProgessbar').data('current', 0).data('max', plan.counter);
             }).catch(err => {
-              console.error("FarmGod Error:", err);
               Dialog.close(); 
-              UI.ErrorMessage("สคริปต์โหลดข้อมูลล้มเหลว (เช็ค Console F12)");
+              prompt("พบข้อผิดพลาด โปรดคัดลอกข้อความนี้:", err ? (err.stack || err.message || err) : "Unknown Error");
+              UI.ErrorMessage("สคริปต์โหลดข้อมูลล้มเหลว");
             });
           });
         });
@@ -197,7 +224,7 @@ window.FarmGod.Main = (function (Library, Translation) {
     });
   };
   const buildTable = function (plan) {
-    let html = `<div class="vis farmGodContent"><h4>FarmGod V2 Safe</h4><table class="vis" width="100%">
+    let html = `<div class="vis farmGodContent"><h4>FarmGod Ultimate v5</h4><table class="vis" width="100%">
                 <tr><div id="FarmGodProgessbar" class="progress-bar" style="width:98%;margin:5px auto;"><div style="background: rgb(146, 194, 0);"></div><span class="label"></span></div></tr>
                 <tr><th>${t.table.origin}</th><th>${t.table.target}</th><th>${t.table.fields}</th><th>${t.table.farm}</th></tr>`;
     if (!$.isEmptyObject(plan)) {
@@ -218,91 +245,123 @@ window.FarmGod.Main = (function (Library, Translation) {
     let data = { villages: {}, commands: {}, farms: { templates: {}, farms: {} } };
     return Promise.all([
       lib.processAllPages(TribalWars.buildURL('GET', 'overview_villages', { mode: 'combined', group: group }), ($h) => {
-        $h.find('#combined_table .row_a, #combined_table .row_b').filter((i, el) => $(el).find('.bonus_icon_33').length == 0).map((i, el) => {
-          let $el = $(el), $q = $el.find('.quickedit-label').first();
-          let u = $el.find('.unit-item').map((idx, e) => $(e).text().toNumber()).get();
-          data.villages[$q.text().toCoord()] = { name: $q.data('text'), id: parseInt($el.find('.quickedit-vn').first().data('id')), units: u };
-        });
+        try {
+            $h.find('#combined_table .row_a, #combined_table .row_b').filter((i, el) => $(el).find('.bonus_icon_33').length == 0).each(function() {
+              try {
+                  let $el = $(this), $q = $el.find('.quickedit-label').first();
+                  let c = $q.text().toCoord();
+                  if(c) {
+                      let u = $el.find('.unit-item').map((idx, e) => parseFloat($(e).text()) || 0).get();
+                      data.villages[c] = { name: $q.data('text') || "Village", id: parseInt($el.find('.quickedit-vn').first().data('id')) || 0, units: u };
+                  }
+              } catch(e) {}
+            });
+        } catch(e) {}
+        return data;
       }),
       lib.processAllPages(TribalWars.buildURL('GET', 'overview_villages', { mode: 'commands', type: 'attack' }), ($h) => {
-        $h.find('#commands_table tr.row_a, #commands_table tr.row_b').map((i, el) => {
-          let $el = $(el), c = $el.find('.quickedit-label').first().text().toCoord();
-          if (c) { if (!data.commands[c]) data.commands[c] = []; data.commands[c].push(Math.round(lib.timestampFromString($el.find('td').eq(2).text().trim()) / 1000)); }
-        });
+        try {
+            $h.find('#commands_table tr.row_a, #commands_table tr.row_b').each(function() {
+              try {
+                  let $el = $(this), c = $el.find('.quickedit-label').first().text().toCoord();
+                  if (c) { 
+                      if (!data.commands[c]) data.commands[c] = []; 
+                      let timeStr = $el.find('td').eq(2).text().trim();
+                      data.commands[c].push(Math.round(lib.timestampFromString(timeStr) / 1000)); 
+                  }
+              } catch(e) {}
+            });
+        } catch(e) {}
+        return data;
       }),
       lib.processAllPages(TribalWars.buildURL('GET', 'am_farm'), ($h) => {
-        if ($.isEmptyObject(data.farms.templates)) {
-          let s = lib.getUnitSpeeds() || {};
-          let defSpeed = s['light'] || 10;
-          let $form = $h.find('form[action*="action=edit_all"]');
-          
-          // ดึง ID แบบปลอดภัยสุดๆ เพื่อไม่ให้เกิด Error: Template not created
-          ['a', 'b'].forEach(tName => {
-              let $idInput = $form.find(`input[name="template[${tName}][id]"]`);
-              if($idInput.length) {
-                  data.farms.templates[tName] = {
-                      id: parseInt($idInput.val(), 10),
-                      units: $idInput.closest('tr').find('input[type="text"], input[type="number"]').map((idx, e) => parseInt($(e).val(), 10) || 0).get(),
-                      speed: defSpeed
-                  };
-              }
-          });
-          
-          let cUnits = new Array(game_data.units.length).fill(0);
-          let lcIdx = game_data.units.indexOf('light');
-          if (lcIdx > -1) cUnits[lcIdx] = 2;
-          data.farms.templates['c'] = { id: 'c', units: cUnits, speed: defSpeed };
-        }
-        
-        let serverNow = new Date(lib.getCurrentServerTime());
-        $h.find('#plunder_list tr[id^="village_"]').each(function() {
-          let $el = $(this);
-          let coordAnchor = $el.find('a[href*="screen=report"]').first();
-          if (!coordAnchor.length) return;
-          let coord = coordAnchor.text().toCoord();
-          if (!coord) return;
-          
-          let timeText = "";
-          $el.find('td').each(function() {
-              let text = $(this).text().toLowerCase();
-              if (text.includes(':') && (text.includes('today') || text.includes('yesterday') || text.includes('วันนี้') || text.includes('เมื่อวาน') || text.match(/\d+\.\d+/))) {
-                  timeText = text;
-              }
-          });
-          
-          let dH = 999;
-          if (timeText) {
-            let rT = new Date(serverNow.getTime());
-            let tM = timeText.match(/(\d{1,2}):(\d{2})/);
-            if (tM) {
-              rT.setHours(parseInt(tM[1], 10), parseInt(tM[2], 10), 0, 0);
-              if (timeText.includes('yesterday') || timeText.includes('เมื่อวาน')) {
-                  rT.setDate(serverNow.getDate() - 1);
-              } else if (!timeText.includes('today') && !timeText.includes('วันนี้')) {
-                  let dM = timeText.match(/(\d{1,2})\.(\d{1,2})\./);
-                  if (dM) {
-                      rT.setDate(parseInt(dM[1], 10));
-                      rT.setMonth(parseInt(dM[2], 10) - 1);
-                  }
-              }
-              dH = (serverNow.getTime() - rT.getTime()) / 36e5;
-              if (dH < 0) dH += 24; 
+        try {
+            if ($.isEmptyObject(data.farms.templates)) {
+              let s = lib.getUnitSpeeds() || {};
+              let defSpeed = s['light'] || 10;
+              $h.find('form[action*="action=edit_all"] a.farm_icon').each(function() {
+                try {
+                    let cls = $(this).attr('class') || "";
+                    let nameMatch = cls.match(/farm_icon_([a-b])/);
+                    if (nameMatch && nameMatch[1]) {
+                        let name = nameMatch[1];
+                        let $row = $(this).closest('tr');
+                        let idInput = $row.find('input[name*="[id]"]');
+                        if (idInput.length) {
+                            data.farms.templates[name] = { 
+                                id: parseInt(idInput.val(), 10), 
+                                units: $row.find('input[type="text"]').map((idx, e) => parseInt($(e).val(), 10) || 0).get(), 
+                                speed: defSpeed 
+                            };
+                        }
+                    }
+                } catch(e) {}
+              });
+              let cUnits = new Array(game_data.units.length).fill(0);
+              let lcIdx = game_data.units.indexOf('light');
+              if (lcIdx > -1) cUnits[lcIdx] = 2;
+              data.farms.templates['c'] = { id: 'c', units: cUnits, speed: defSpeed };
             }
-          }
+            
+            let serverNow = new Date(lib.getCurrentServerTime());
+            $h.find('#plunder_list tr[id^="village_"]').each(function() {
+              try {
+                  let $el = $(this);
+                  let coordAnchor = $el.find('a[href*="screen=report"]').first();
+                  if (!coordAnchor.length) return;
+                  let coord = coordAnchor.text().toCoord();
+                  if (!coord) return;
+                  
+                  let timeText = "";
+                  $el.find('td').each(function() {
+                      let text = $(this).text().toLowerCase();
+                      if (text.includes(':') && (text.includes('today') || text.includes('yesterday') || text.includes('วันนี้') || text.includes('เมื่อวาน') || text.match(/\d+\.\d+/))) {
+                          timeText = text;
+                      }
+                  });
+                  
+                  let dH = 999;
+                  if (timeText) {
+                    let rT = new Date(serverNow.getTime());
+                    let tM = timeText.match(/(\d{1,2}):(\d{2})/);
+                    if (tM && tM[1] && tM[2]) {
+                      rT.setHours(parseInt(tM[1], 10), parseInt(tM[2], 10), 0, 0);
+                      if (timeText.includes('yesterday') || timeText.includes('เมื่อวาน')) {
+                          rT.setDate(serverNow.getDate() - 1);
+                      } else if (!timeText.includes('today') && !timeText.includes('วันนี้')) {
+                          let dM = timeText.match(/(\d{1,2})\.(\d{1,2})\./);
+                          if (dM && dM[1] && dM[2]) {
+                              rT.setDate(parseInt(dM[1], 10));
+                              rT.setMonth(parseInt(dM[2], 10) - 1);
+                          }
+                      }
+                      dH = (serverNow.getTime() - rT.getTime()) / 36e5;
+                      if (dH < 0) dH += 24; 
+                    }
+                  }
 
-          // ป้องกัน Error สีภาพหาย
-          let dotMatch = $el.find('img[src*="dots/"]').attr('src');
-          let safeColor = dotMatch ? (dotMatch.match(/dots\/(green|yellow|red|blue|red_blue)/) || ['', 'blue'])[1] : 'blue';
-          let vidMatch = $el.attr('id');
-          if(!vidMatch) return;
+                  let colorMatch = $el.find('img[src*="dots/"]').attr('src');
+                  let safeColor = 'blue';
+                  if (colorMatch) {
+                      let cM = colorMatch.match(/dots\/(.*?)\.png/);
+                      if (cM && cM[1]) safeColor = cM[1];
+                  }
 
-          data.farms.farms[coord] = { 
-            id: parseInt(vidMatch.split('_')[1], 10), 
-            color: safeColor, 
-            has_c: $el.find('[class*="farm_icon_c"]').length > 0, 
-            age_h: dH 
-          };
-        });
+                  let vidStr = $el.attr('id');
+                  if(!vidStr) return;
+                  let vidParts = vidStr.split('_');
+                  if (vidParts.length < 2) return;
+
+                  data.farms.farms[coord] = { 
+                    id: parseInt(vidParts[1], 10), 
+                    color: safeColor, 
+                    has_c: $el.find('[class*="farm_icon_c"]').length > 0, 
+                    age_h: dH 
+                  };
+              } catch(rowErr) {}
+            });
+        } catch(e) {}
+        return data;
       })
     ]).then(() => {
       data.farms.farms = Object.fromEntries(Object.entries(data.farms.farms).filter(([k, v]) => v.color != 'red' && (v.color != 'yellow' || losses)));
@@ -320,6 +379,8 @@ window.FarmGod.Main = (function (Library, Translation) {
         if (!data.farms.templates.hasOwnProperty(tN)) { tN = 'a'; }
         
         let temp = data.farms.templates[tN];
+        let tempId = (tN === 'c') ? 'c' : temp.id;
+        
         let units = lib.subtractArrays(data.villages[s].units, temp.units);
         let arrival = Math.round(now + f.d * temp.speed * 60 + Math.round(plan.counter / 5));
         let maxTimeDiff = Math.round(time * 60); 
@@ -331,7 +392,7 @@ window.FarmGod.Main = (function (Library, Translation) {
 
         if (units && timeDiff && f.d < dis) {
           plan.counter++; if (!plan.farms[s]) plan.farms[s] = [];
-          plan.farms[s].push({ origin: { id: data.villages[s].id, name: data.villages[s].name }, target: { coord: f.k, id: v.id }, fields: f.d, template: { name: tN, id: temp.id } });
+          plan.farms[s].push({ origin: { id: data.villages[s].id, name: data.villages[s].name }, target: { coord: f.k, id: v.id }, fields: f.d, template: { name: tN, id: tempId } });
           data.villages[s].units = units;
           data.commands[f.k].push(arrival);
         }
@@ -341,29 +402,36 @@ window.FarmGod.Main = (function (Library, Translation) {
   };
   const sendFarm = function ($t) {
     if (farmBusy) return; farmBusy = true;
-    let targetId = $t.attr('data-target');
+    let targetId = parseInt($t.attr('data-target'), 10);
     let templateId = $t.attr('data-template');
-    let sourceId = $t.attr('data-origin');
+    let sourceId = parseInt($t.attr('data-origin'), 10);
 
-    TribalWars.post(Accountmanager.send_units_link.replace(/village=(\d+)/, 'village=' + sourceId), null, { 
-        target: targetId, 
-        template_id: templateId, 
-        source: sourceId 
-    }, (r) => {
-        UI.SuccessMessage(r.success || "ส่งฟาร์มสำเร็จ!"); 
-        let $p = $('#FarmGodProgessbar'); 
-        $p.data('current', $p.data('current') + 1); 
-        UI.updateProgressBar($p, $p.data('current'), $p.data('max')); 
-        $t.closest('tr').remove(); 
-        farmBusy = false;
-    }, (r) => { 
-        UI.ErrorMessage(r || t.messages.sendError); 
-        let $p = $('#FarmGodProgessbar'); 
-        $p.data('current', $p.data('current') + 1); 
-        UI.updateProgressBar($p, $p.data('current'), $p.data('max')); 
-        $t.closest('tr').remove(); 
-        farmBusy = false; 
-    });
+    try {
+        if (typeof Accountmanager !== 'undefined' && Accountmanager.farm && Accountmanager.farm.sendUnits) {
+            Accountmanager.farm.sendUnits($t[0], targetId, templateId);
+            setTimeout(() => {
+                let $p = $('#FarmGodProgessbar'); 
+                let cur = parseInt($p.data('current')) || 0;
+                $p.data('current', cur + 1); 
+                UI.updateProgressBar($p, cur + 1, parseInt($p.data('max')) || 100); 
+                $t.closest('tr').remove(); 
+                farmBusy = false;
+            }, 300);
+        } else {
+            TribalWars.post(Accountmanager.send_units_link.replace(/village=(\d+)/, 'village=' + sourceId), null, { 
+                target: targetId, 
+                template_id: templateId, 
+                source: sourceId 
+            }, (r) => {
+                UI.SuccessMessage(r.success || "ส่งฟาร์มสำเร็จ!"); 
+                let $p = $('#FarmGodProgessbar'); 
+                $p.data('current', parseInt($p.data('current')) + 1); 
+                UI.updateProgressBar($p, $p.data('current'), $p.data('max')); 
+                $t.closest('tr').remove(); 
+                farmBusy = false;
+            }, (r) => { farmBusy = false; });
+        }
+    } catch(e) { farmBusy = false; }
   };
   return { init };
 })(window.FarmGod.Library, window.FarmGod.Translation);
