@@ -261,7 +261,12 @@ window.FarmGod.Main = (function (Library, Translation) {
       orderedFarms.forEach((el) => {
         let farmIndex = data.farms.farms[el.coord];
         let template_name = 'a';
-        if (optionMaxloot && farmIndex.has_c && farmIndex.age_hours <= 1.5) { template_name = 'c'; }
+      
+console.log('Village: ' + el.coord + ' | Report Age: ' + farmIndex.age_hours + ' hrs | Has C: ' + farmIndex.has_c);
+if (optionMaxloot && farmIndex.has_c && farmIndex.age_hours <= 1.5) {
+template_name = 'c';
+console.log('>>> Selected: C');
+}
         if (!data.farms.templates.hasOwnProperty(template_name)) { template_name = 'a'; }
         let template = data.farms.templates[template_name];
         let unitsLeft = lib.subtractArrays(data.villages[prop].units, template.units);
