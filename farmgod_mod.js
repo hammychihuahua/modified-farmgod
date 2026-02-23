@@ -204,6 +204,7 @@ window.FarmGod.Main = (function (Library, Translation) {
     };
     let farmProcessor = ($html) => {
       if ($.isEmptyObject(data.farms.templates)) {
+        data.farms.templates['c'] = { id: 'c', units: [0,0,0,0,0,0,0,0,0,0,0,0], speed: 10 };
         let unitSpeeds = lib.getUnitSpeeds();
         $html.find('form[action*="action=edit_all"]').find('input[type="hidden"][name*="template"]').closest('tr').map((i, el) => {
           let $el = $(el);
@@ -223,23 +224,19 @@ window.FarmGod.Main = (function (Library, Translation) {
             if (text.includes(':') && (text.includes('วัน') || text.includes('today') || text.includes('yesterday') || text.match(/\d+\.\d+/))) { timeText = text; break; }
         }
         let diffHours = 999;
-        if (timeText) {
-            let now = new Date(); let reportTime = new Date(now.getTime()); let timeMatch = timeText.match(/(\d{1,2}):(\d{2})/);
-            if (timeMatch) {
-                let hours = parseInt(timeMatch[1], 10); let minutes = parseInt(timeMatch[2], 10);
-                if (timeText.includes('เมื่อวาน') || timeText.includes('yesterday')) { reportTime.setDate(now.getDate() - 1); } 
-                else if (!timeText.includes('วัน') && !timeText.includes('today')) {
-                    let dateMatch = timeText.match(/(\d{1,2})\.(\d{1,2})\./);
-                    if (dateMatch) { reportTime.setDate(parseInt(dateMatch[1], 10)); reportTime.setMonth(parseInt(dateMatch[2], 10) - 1); }
-                }
-                reportTime.setHours(hours, minutes, 0, 0);
-                diffHours = (now.getTime() - reportTime.getTime()) / (1000 * 60 * 60);
-            }
+     let now = new Date(); let reportTime = new Date(now.getTime()); let timeMatch = timeText.match(/(\d{1,2}):(\d{2})/);
+if (timeMatch) {
+let hours = parseInt(timeMatch[1], 10); let minutes = parseInt(timeMatch[2], 10);
+if (timeText.includes('yesterday')) { reportTime.setDate(now.getDate() - 1); }
+reportTime.setHours(hours, minutes, 0, 0);
+diffHours = (now.getTime() - reportTime.getTime()) / (1000 * 60 * 60);
+}
+      
         }
         return (data.farms.farms[$el.find('a[href*="screen=report&mode=all&view="]').first().text().toCoord()] = {
           id: $el.attr('id').split('_')[1].toNumber(),
           color: $el.find('img[src*="graphic/dots/"]').attr('src').match(/dots\/(green|yellow|red|blue|red_blue)/)[1],
-          age_hours: diffHours, has_c: $el.find('a.farm_icon_c').length > 0
+          age_hours: diffHours, has_c: $el.find('a.farm_icon_c').length > 0, age_h: diffHours
         });
       });
       return data;
@@ -262,11 +259,8 @@ window.FarmGod.Main = (function (Library, Translation) {
         let farmIndex = data.farms.farms[el.coord];
         let template_name = 'a';
       
-console.log('Village: ' + el.coord + ' | Report Age: ' + farmIndex.age_hours + ' hrs | Has C: ' + farmIndex.has_c);
-if (optionMaxloot && farmIndex.has_c && farmIndex.age_hours <= 1.5) {
-template_name = 'c';
-console.log('>>> Selected: C');
-}
+if (optionMaxloot && farmIndex.has_c && farmIndex.age_h <= 1.0) { template_name = 'c'; }
+        
         if (!data.farms.templates.hasOwnProperty(template_name)) { template_name = 'a'; }
         let template = data.farms.templates[template_name];
         let unitsLeft = lib.subtractArrays(data.villages[prop].units, template.units);
