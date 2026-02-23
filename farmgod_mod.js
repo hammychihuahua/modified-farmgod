@@ -351,4 +351,83 @@ window.FarmGod.Main = (function (Library, Translation) {
       return data;
     });
   };
-  const createPlanning = function (dis, time, maxL, data
+  const createPlanning = function (dis, time, maxL, data) {
+    let plan = { counter: 0, farms: {} }, now = Math.round(lib.getCurrentServerTime() / 1000);
+    for (let s in data.villages) {
+      if (!data.villages[s] || !data.villages[s].units) continue;
+      Object.keys(data.farms.farms).map(k => ({ k, d: lib.getDistance(s, k) })).sort((a, b) => a.d - b.d).forEach(f => {
+        let v = data.farms.farms[f.k];
+        if (!v) return;
+        
+        let tN = 'a';
+        if (maxL && v.has_c && v.age_h <= 1.5) { tN = 'c'; }
+        if (!data.farms.templates.hasOwnProperty(tN)) { tN = 'a'; }
+        
+        let temp = data.farms.templates[tN];
+        if (!temp || !temp.units) return; 
+        
+        let tempId = (tN === 'c') ? 'c' : temp.id;
+        
+        let units = (tN === 'c') ? data.villages[s].units : lib.subtractArrays(data.villages[s].units, temp.units);
+        if (!units) return; 
+
+        let arrival = Math.round(now + f.d * temp.speed * 60 + Math.round(plan.counter / 5));
+        let maxTimeDiff = Math.round(time * 60); let timeDiff = true;
+        
+        if (data.commands.hasOwnProperty(f.k)) {
+          data.commands[f.k].forEach(ts => { if (Math.abs(ts - arrival) < maxTimeDiff) timeDiff = false; });
+        } else { data.commands[f.k] = []; }
+
+        if (timeDiff && f.d < dis) {
+          plan.counter++; if (!plan.farms[s]) plan.farms[s] = [];
+          plan.farms[s].push({ origin: { id: data.villages[s].id, name: data.villages[s].name }, target: { coord: f.k, id: v.id }, fields: f.d, template: { name: tN, id: tempId } });
+          if (tN !== 'c') data.villages[s].units = units; 
+          data.commands[f.k].push(arrival);
+        }
+      });
+    }
+    return plan;
+  };
+  const sendFarm = function ($t) {
+    if (farmBusy) return; farmBusy = true;
+    let targetId = parseInt($t.attr('data-target'), 10);
+    let templateId = $t.attr('data-template');
+    let sourceId = parseInt($t.attr('data-origin'), 10);
+
+    try {
+        let $nativeBtn = $('#village_' + targetId + ' a.farm_icon_' + templateId);
+        
+        if ($nativeBtn.length > 0 && typeof Accountmanager !== 'undefined' && Accountmanager.farm && Accountmanager.farm.sendUnits) {
+            Accountmanager.farm.sendUnits($nativeBtn[0], targetId, templateId);
+            setTimeout(() => {
+                let $p = $('#FarmGodProgessbar'); 
+                $p.data('current', parseInt($p.data('current') || 0) + 1); 
+                UI.updateProgressBar($p, $p.data('current'), $p.data('max')); 
+                $t.closest('tr').remove(); 
+                farmBusy = false;
+            }, 300);
+        } else {
+            TribalWars.post(Accountmanager.send_units_link.replace(/village=(\d+)/, 'village=' + sourceId), null, { 
+                target: targetId, template_id: templateId, source: sourceId 
+            }, (r) => {
+                UI.SuccessMessage(r.success || "ส่งฟาร์มสำเร็จ!"); 
+                let $p = $('#FarmGodProgessbar'); 
+                $p.data('current', parseInt($p.data('current') || 0) + 1); 
+                UI.updateProgressBar($p, $p.data('current'), $p.data('max')); 
+                $t.closest('tr').remove(); 
+                farmBusy = false;
+            }, (r) => { 
+                UI.ErrorMessage(r || "Error");
+                let $p = $('#FarmGodProgessbar'); 
+                $p.data('current', parseInt($p.data('current') || 0) + 1); 
+                UI.updateProgressBar($p, $p.data('current'), $p.data('max')); 
+                $t.closest('tr').remove(); 
+                farmBusy = false; 
+            });
+        }
+    } catch(e) { farmBusy = false; }
+  };
+  return { init };
+})(window.FarmGod.Library, window.FarmGod.Translation);
+
+(() => { window.FarmGod.Main.init(); })();
